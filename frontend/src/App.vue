@@ -19,11 +19,16 @@ const loading = ref(false);
 const showNameModal = ref(false);
 const newName = ref("");
 
+// Client setup with explicit casting
 let client = createClient({ chain: CHAIN });
 
 // --- SOUNDS ---
 const playSound = (type: 'hover'|'click'|'win'|'lose') => {
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const win = window as any;
+  const AudioContext = win.AudioContext || win.webkitAudioContext;
+  if (!AudioContext) return;
+  
+  const ctx = new AudioContext();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
@@ -51,7 +56,7 @@ const playSound = (type: 'hover'|'click'|'win'|'lose') => {
 };
 
 const connect = async () => {
-  // FIX: Cast window to any to access ethereum
+  // Fix TS2339: Cast window to any
   const win = window as any;
   if (!win.ethereum) return alert("Install MetaMask");
   
@@ -59,7 +64,7 @@ const connect = async () => {
     const accounts = await win.ethereum.request({ method: 'eth_requestAccounts' });
     account.value = accounts[0];
     
-    // FIX: Cast account to any for the client
+    // Fix TS2322: Cast account string to any
     client = createClient({ chain: CHAIN, account: account.value as any });
     refresh();
   } catch (e) { alert("Connection Error"); }
@@ -68,9 +73,11 @@ const connect = async () => {
 const refresh = async () => {
   if (!CONTRACT_ADDRESS || !account.value) return;
   try {
-    // FIX: Cast result to string
+    // Fix TS2345: Cast account to string explicitly in args
     const qRaw = await client.readContract({ 
-      address: CONTRACT_ADDRESS, functionName: 'get_current_state', args: [account.value] 
+      address: CONTRACT_ADDRESS, 
+      functionName: 'get_current_state', 
+      args: [account.value as string] 
     }) as string;
     
     const qData = JSON.parse(qRaw);
@@ -85,15 +92,19 @@ const refresh = async () => {
       currentQ.value = qData; 
     }
 
-    // FIX: Type the return data as any
-    const pd: any = await client.readContract({ 
-      address: CONTRACT_ADDRESS, functionName: 'get_player_data', args: [account.value] 
-    });
+    // Fix TS18047/TS2339: Cast result to any
+    const pd = await client.readContract({ 
+      address: CONTRACT_ADDRESS, 
+      functionName: 'get_player_data', 
+      args: [account.value as string] 
+    }) as any;
     myData.value = { xp: Number(pd.xp), username: pd.username };
 
-    // FIX: Type the return array as any[]
+    // Fix TS18047/TS2339: Cast result to any array
     const lb = await client.readContract({ 
-      address: CONTRACT_ADDRESS, functionName: 'get_leaderboard', args: [] 
+      address: CONTRACT_ADDRESS, 
+      functionName: 'get_leaderboard', 
+      args: [] 
     }) as any[];
     
     leaderboard.value = lb.sort((a:any, b:any) => Number(b.xp) - Number(a.xp)).slice(0, 10);
@@ -110,7 +121,7 @@ const sendTx = async (method: string, args: any[]) => {
     const hash = await client.writeContract({ address: CONTRACT_ADDRESS, functionName: method, args, value: 0n });
     logMsg.value = "VERIFYING ANSWER...";
     
-    // FIX: Cast status string to any
+    // Fix TS2322: Cast status string to any to bypass Enum check
     await client.waitForTransactionReceipt({ hash, status: 'ACCEPTED' as any });
     
     await refresh();
