@@ -11,7 +11,7 @@ const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
 const account = ref<string | null>(null);
 const gameState = ref("IDLE");
 const currentQ = ref<any>(null);
-const resultData = ref<any>(null); // Stores result info (streak, win/loss)
+const resultData = ref<any>(null); 
 const myData = ref({ xp: 0, username: "Anon" });
 const leaderboard = ref<any[]>([]);
 const logMsg = ref("SYSTEM READY.");
@@ -51,19 +51,28 @@ const playSound = (type: 'hover'|'click'|'win'|'lose') => {
 };
 
 const connect = async () => {
-  if (!window.ethereum) return alert("Install MetaMask");
-  const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-  account.value = accounts[0];
-  client = createClient({ chain: CHAIN, account: account.value });
-  refresh();
+  // FIX: Cast window to any to access ethereum
+  const win = window as any;
+  if (!win.ethereum) return alert("Install MetaMask");
+  
+  try {
+    const accounts = await win.ethereum.request({ method: 'eth_requestAccounts' });
+    account.value = accounts[0];
+    
+    // FIX: Cast account to any for the client
+    client = createClient({ chain: CHAIN, account: account.value as any });
+    refresh();
+  } catch (e) { alert("Connection Error"); }
 };
 
 const refresh = async () => {
   if (!CONTRACT_ADDRESS || !account.value) return;
   try {
+    // FIX: Cast result to string
     const qRaw = await client.readContract({ 
       address: CONTRACT_ADDRESS, functionName: 'get_current_state', args: [account.value] 
-    });
+    }) as string;
+    
     const qData = JSON.parse(qRaw);
 
     if (qData.status === "IDLE") gameState.value = "IDLE";
@@ -76,10 +85,17 @@ const refresh = async () => {
       currentQ.value = qData; 
     }
 
-    const pd = await client.readContract({ address: CONTRACT_ADDRESS, functionName: 'get_player_data', args: [account.value] });
+    // FIX: Type the return data as any
+    const pd: any = await client.readContract({ 
+      address: CONTRACT_ADDRESS, functionName: 'get_player_data', args: [account.value] 
+    });
     myData.value = { xp: Number(pd.xp), username: pd.username };
 
-    const lb = await client.readContract({ address: CONTRACT_ADDRESS, functionName: 'get_leaderboard', args: [] });
+    // FIX: Type the return array as any[]
+    const lb = await client.readContract({ 
+      address: CONTRACT_ADDRESS, functionName: 'get_leaderboard', args: [] 
+    }) as any[];
+    
     leaderboard.value = lb.sort((a:any, b:any) => Number(b.xp) - Number(a.xp)).slice(0, 10);
   } catch(e) { console.error(e); }
 };
@@ -93,15 +109,16 @@ const sendTx = async (method: string, args: any[]) => {
   try {
     const hash = await client.writeContract({ address: CONTRACT_ADDRESS, functionName: method, args, value: 0n });
     logMsg.value = "VERIFYING ANSWER...";
-    await client.waitForTransactionReceipt({ hash, status: 'ACCEPTED' });
     
-    // Immediate feedback logic
+    // FIX: Cast status string to any
+    await client.waitForTransactionReceipt({ hash, status: 'ACCEPTED' as any });
+    
     await refresh();
     if(gameState.value === 'FINISHED') {
         playSound(resultData.value.result === 'VICTORY' ? 'win' : 'lose');
         logMsg.value = resultData.value.result;
     } else {
-        playSound('win'); // Correct answer, next question loaded
+        playSound('win');
         logMsg.value = "CORRECT! NEXT QUESTION...";
     }
     showNameModal.value = false;
